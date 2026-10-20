@@ -1,0 +1,8 @@
+node_modules/
+dist/
+shots/
+.deploy/
+.tmp/
+.vite-tmp/
+*.log
+.DS_Store

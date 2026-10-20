@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#0f1a26" />
+    <title>光与潮汐 · 阿那亚海边教堂</title>
+    <meta name="description" content="阿那亚·光与潮汐：一座可以拨动时间的海边教堂。拖动环顾，拨动时辰，听见潮声。" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23f3eee4'/%3E%3Cpath d='M16 6l9 16H7z' fill='none' stroke='%232b2a26' stroke-width='1.2'/%3E%3Cpath d='M16 10v9M12.8 13.4h6.4' stroke='%23b08a5a' stroke-width='1.2'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <main id="stage" aria-label="阿那亚海边教堂三维场景">
+      <canvas id="scene"></canvas>
+      <div class="vignette" aria-hidden="true"></div>
+      <div class="grain" aria-hidden="true"></div>
+
+      <header class="brand">
+        <p class="brand__kicker">ARANYA · 39°48′N 119°31′E</p>
+        <h1 class="brand__title">光与潮汐</h1>
+        <p class="brand__sub">阿那亚 · 海边教堂</p>
+      </header>
+
+      <nav class="topbar" aria-label="主要操作">
+        <button class="btn btn--ghost" id="btn-notes" type="button">建筑手记</button>
+        <button class="btn btn--ghost" id="btn-sound" type="button" aria-pressed="false">
+          <span class="dot" aria-hidden="true"></span><span>听海</span>
+        </button>
+        <button class="btn btn--ghost" id="btn-card" type="button">留住此刻</button>
+        <button class="btn btn--icon" id="btn-hide" type="button" aria-label="隐藏界面" title="隐藏界面（H）">
+          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z" fill="none" stroke="currentColor" stroke-width="1.1"/><circle cx="12" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="1.1"/></svg>
+        </button>
+      </nav>
+
+      <section class="poem" id="poem" aria-live="polite">
+        <p class="poem__text" id="poem-text"></p>
+        <button class="poem__next" id="btn-poem" type="button">换一句 <span aria-hidden="true">↻</span></button>
+      </section>
+
+      <section class="dock" aria-label="时间与视角">
+        <div class="time">
+          <div class="time__head">
+            <span class="time__clock" id="clock">05:20</span>
+            <span class="time__phase" id="phase">晨曦</span>
+          </div>
+          <div class="slider">
+            <div class="slider__track" aria-hidden="true"><div class="slider__fill" id="slider-fill"></div></div>
+            <input id="time-slider" type="range" min="0" max="24" step="0.01" value="5.33" aria-label="时间" />
+            <div class="slider__ticks" aria-hidden="true"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
+          </div>
+          <div class="chips" role="group" aria-label="快捷时刻">
+            <button data-hour="5.33" type="button">晨曦</button>
+            <button data-hour="11.67" type="button">日光</button>
+            <button data-hour="18.33" type="button">余晖</button>
+            <button data-hour="19.67" type="button">蓝调</button>
+            <button data-hour="23.33" type="button">月夜</button>
+          </div>
+        </div>
+        <div class="dock__actions">
+          <button class="btn btn--solid" id="btn-enter" type="button">进入教堂</button>
+          <button class="btn btn--ghost" id="btn-reset" type="button">恢复视角</button>
+        </div>
+      </section>
+
+      <section class="route" id="route" hidden aria-label="室内路线">
+        <div class="route__steps" role="group" aria-label="路线阶段">
+          <button data-stage="0" type="button"><i>1</i><span>海边</span></button>
+          <button data-stage="1" type="button"><i>2</i><span>台阶与门廊</span></button>
+          <button data-stage="2" type="button"><i>3</i><span>礼堂</span></button>
+          <button data-stage="3" type="button"><i>4</i><span>观海露台</span></button>
+        </div>
+        <div class="route__meta">
+          <button class="btn btn--tiny" id="btn-back" type="button">返回</button>
+          <button class="btn btn--tiny" id="btn-skip" type="button">跳过过渡</button>
+          <button class="btn btn--tiny" id="btn-leave" type="button">回到海边</button>
+        </div>
+      </section>
+
+      <p class="hint" id="hint">拖动环顾 · 滚轮或双指缩放 · 拨动时间</p>
+
+      <button class="reveal" id="btn-reveal" type="button" hidden>显示界面</button>
+
+      <div class="loading" id="loading">
+        <div class="loading__inner">
+          <p class="loading__kicker">A MEDITATION BY THE SEA</p>
+          <h2 class="loading__title">光与潮汐</h2>
+          <p class="loading__sub">阿那亚 · 海边教堂</p>
+          <div class="loading__bar"><i id="loading-fill"></i></div>
+          <p class="loading__status" id="loading-status">正在装配光线与潮汐 · 0%</p>
+        </div>
+      </div>
+
+      <div class="modal" id="modal-notes" hidden>
+        <div class="modal__scrim" data-close></div>
+        <article class="sheet" role="dialog" aria-modal="true" aria-labelledby="notes-title">
+          <header class="sheet__head">
+            <p class="sheet__kicker">FIELD NOTES · 01</p>
+            <h2 id="notes-title">建筑手记</h2>
+            <button class="sheet__close" type="button" data-close aria-label="关闭">✕</button>
+          </header>
+          <div class="sheet__body">
+            <section>
+              <h3>停靠沙滩的冥想之船</h3>
+              <p>直向建筑把这座海边教堂想象成很久以前漂泊在海上的一艘船。海水退去，留下一个仍然悬浮在沙上的空间：下层是有遮盖的临海敞廊，涨潮时会被海水浸没；上层是面向大海的礼堂。</p>
+              <p>三十米的甬道、留出六百毫米缝隙的大台阶、进门后的影壁，让接近本身成为一段被安排的仪式。抬高的地面让视线滤掉沙滩与人群，只剩海平线。</p>
+            </section>
+            <section>
+              <h3>光与材料</h3>
+              <p>外墙为白色抹灰，颗粒粗粝，在晨昏的斜光里会显出细密的阴影；室内是灰泥、深色木椅、柚木地板与天花板。屋脊一线留出窄长的天光，海侧山墙上的十字窗把光切成一个符号，落在墙上、地上。</p>
+              <p>本作品以实时渲染重建这一空间经验，并非测绘级复原：比例、开口与家具经过重新编排，以便在浏览器里行走。</p>
+            </section>
+            <section>
+              <h3>如何观看</h3>
+              <p>拨动时间滑杆，天空、光向、阴影、海色与灯会一起移动，建筑不动。五个时刻只是入口，真正的作品是它们之间那些无人命名的分钟。点击「听海」可以听见合成的潮声；进入礼堂后会变轻，切到后台会淡出。</p>
+            </section>
+            <section class="sources">
+              <h3>资料来源</h3>
+              <ul>
+                <li><a href="https://www.gooood.cn/seashore-chapel-china-by-vector-architects.htm" target="_blank" rel="noreferrer noopener">谷德设计网 · 海边教堂，秦皇岛 / 直向建筑</a></li>
+                <li><a href="https://www.vectorarchitects.com/en/projects/65" target="_blank" rel="noreferrer noopener">Vector Architects · Chapel of Music, Aranya</a></li>
+                <li><a href="https://www.vectorarchitects.com/" target="_blank" rel="noreferrer noopener">直向建筑 Vector Architects 官方网站</a></li>
+                <li>参考照片 © 陈颢、施峥、CreatAR Images / 直向建筑，仅作研究与氛围参考。</li>
+              </ul>
+              <p class="fineprint">非官方作品，致敬直向建筑与阿那亚。纪念卡在本地生成，寄语不会上传或公开。</p>
+            </section>
+          </div>
+        </article>
+      </div>
+
+      <div class="modal" id="modal-card" hidden>
+        <div class="modal__scrim" data-close></div>
+        <article class="sheet sheet--card" role="dialog" aria-modal="true" aria-labelledby="card-title">
+          <header class="sheet__head">
+            <p class="sheet__kicker">KEEP THIS MOMENT</p>
+            <h2 id="card-title">留住此刻</h2>
+            <button class="sheet__close" type="button" data-close aria-label="关闭">✕</button>
+          </header>
+          <div class="card-grid">
+            <div class="card-preview">
+              <canvas id="card-canvas" width="900" height="600" aria-label="纪念卡预览"></canvas>
+              <p class="card-preview__meta" id="card-meta"></p>
+            </div>
+            <form class="card-form" id="card-form">
+              <label>致 <input id="card-to" type="text" maxlength="16" placeholder="收件人的名字" autocomplete="off" /></label>
+              <label>寄语 <textarea id="card-msg" maxlength="60" rows="3" placeholder="想对此刻说的一句话"></textarea></label>
+              <p class="card-form__privacy">纪念卡只在你的浏览器里合成，不会上传，也不会公开。</p>
+              <div class="card-form__actions">
+                <button class="btn btn--solid" type="submit">下载 PNG</button>
+                <button class="btn btn--ghost" type="button" id="btn-recapture">重新取景</button>
+              </div>
+            </form>
+          </div>
+        </article>
+      </div>
+
+      <p class="toast" id="toast" role="status" aria-live="polite"></p>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
