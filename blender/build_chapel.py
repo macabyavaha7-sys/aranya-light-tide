@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 Arnya Seashore Chapel — parametric build script
 ------------------------------------------------
@@ -570,8 +570,8 @@ def build():
     parts.append(join(drift, "Driftwood"))
 
     rocks = []
-    for (rx, ry, rr, rz) in [(-13.0, -9.2, 0.55, 0.28), (-11.8, -10.1, 0.32, 0.18),
-                             (15.6, -7.4, 0.7, 0.34), (6.8, -16.8, 0.42, 0.22)]:
+    for (rx, ry, rr, rz) in [(-23.0, -14.0, 0.55, 0.28), (-11.8, -10.1, 0.32, 0.18),
+                             (16.8, -9.4, 0.7, 0.34), (7.6, -18.4, 0.42, 0.22)]:
         bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=rr, location=(rx, ry, rz * 0.55))
         rock = bpy.context.object
         rock.name = "Rock"

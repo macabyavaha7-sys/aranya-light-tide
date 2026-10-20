@@ -1,4 +1,4 @@
-﻿import * as THREE from 'three';
+import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 /* ------------------------------------------------------------------ palettes */
@@ -912,7 +912,8 @@ export class World {
     mat.envMapIntensity = 0.55;
     if (name.includes('Stucco') || name.includes('Concrete')) {
       mat.roughness = Math.min(1, (mat.roughness ?? 0.9) * 0.98);
-      mat.normalScale?.set(1.15, 1.15);
+      mat.normalScale?.set(1.35, 1.35);
+      if (name.includes('Stucco')) this.weatherStucco(mat);
     }
     if (name.includes('Oak') || name.includes('Teak')) {
       mat.roughness = 0.62;
@@ -927,6 +928,43 @@ export class World {
       mat.envMapIntensity = 0.9;
     }
     return mat;
+  }
+
+  /** a whisper of weathering: darker at the base, faint lime stains on the
+   *  plaster.  Keeps the white walls from reading as flat plastic. */
+  private weatherStucco(mat: THREE.MeshStandardMaterial) {
+    if ((mat as any).__weathered) return;
+    (mat as any).__weathered = true;
+    mat.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vStuccoPos;')
+        .replace(
+          '#include <begin_vertex>',
+          '#include <begin_vertex>\nvStuccoPos = (modelMatrix * vec4(transformed, 1.0)).xyz;'
+        );
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+          varying vec3 vStuccoPos;
+          float stHash(vec2 p) { p = fract(p * vec2(127.1, 311.7)); p += dot(p, p + 34.7); return fract(p.x * p.y); }
+          float stNoise(vec2 p) {
+            vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+            float a = stHash(i); float b = stHash(i + vec2(1.0, 0.0));
+            float c = stHash(i + vec2(0.0, 1.0)); float d = stHash(i + vec2(1.0, 1.0));
+            return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+          }`
+        )
+        .replace(
+          '#include <color_fragment>',
+          `#include <color_fragment>
+          float baseShade = smoothstep(0.0, 1.8, vStuccoPos.y);
+          float stain = stNoise(vStuccoPos.xz * 0.28 + vStuccoPos.y * 0.19) * 0.6
+                      + stNoise(vStuccoPos.xz * 0.85 - vStuccoPos.y * 0.35) * 0.4;
+          diffuseColor.rgb *= mix(0.905, 1.015, baseShade) * (0.975 + 0.045 * stain);`
+        );
+    };
+    mat.customProgramCacheKey = () => 'stucco-weather-v1';
   }
 
   /* -------------------------------------------------------------- time */
