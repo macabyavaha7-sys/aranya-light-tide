@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+﻿import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 /* ------------------------------------------------------------------ palettes */
@@ -537,6 +537,7 @@ export class World {
   private chapel: THREE.Group | null = null;
   private doors: { left: THREE.Object3D | null; right: THREE.Object3D | null } = { left: null, right: null };
   private bell: THREE.Object3D | null = null;
+  private glassSlide: THREE.Object3D | null = null;
   private lampMaterials: THREE.MeshStandardMaterial[] = [];
   private slotGlow: THREE.MeshBasicMaterial | null = null;
   private interiorLights: THREE.PointLight[] = [];
@@ -547,6 +548,8 @@ export class World {
   private envTimer = 0;
   private doorOpen = 0;
   private doorTarget = 0;
+  private glassOpen = 0;
+  private glassTarget = 0;
   private elapsed = 0;
   private mobile: boolean;
 
@@ -827,6 +830,7 @@ export class World {
       if (o.name === 'Door_L') this.doors.left = o;
       if (o.name === 'Door_R') this.doors.right = o;
       if (o.name === 'Bell') this.bell = o;
+      if (o.name === 'GlassSlide') this.glassSlide = o;
     });
 
     this.chapel = root;
@@ -1095,6 +1099,10 @@ export class World {
     this.doorTarget = THREE.MathUtils.clamp(v, 0, 1);
   }
 
+  setGlassOpen(v: number) {
+    this.glassTarget = THREE.MathUtils.clamp(v, 0, 1);
+  }
+
   update(dt: number) {
     this.elapsed += dt;
     const t = this.elapsed;
@@ -1106,6 +1114,8 @@ export class World {
 
     // doors ease open / shut
     this.doorOpen += (this.doorTarget - this.doorOpen) * Math.min(1, dt * 2.2);
+    this.glassOpen += (this.glassTarget - this.glassOpen) * Math.min(1, dt * 2.4);
+    if (this.glassSlide) this.glassSlide.position.x = -1.52 * this.glassOpen;
     if (this.doors.left) this.doors.left.rotation.y = -1.72 * this.doorOpen;
     if (this.doors.right) this.doors.right.rotation.y = 1.72 * this.doorOpen;
 

@@ -1,4 +1,4 @@
-import './styles.css';
+﻿import './styles.css';
 import { World } from './world';
 import { CameraDirector, STAGES } from './camera';
 import { SeaAudio } from './audio';
@@ -206,7 +206,8 @@ const enterBtn = $('#btn-enter') as HTMLButtonElement;
 const resetBtn = $('#btn-reset') as HTMLButtonElement;
 
 enterBtn.addEventListener('click', () => {
-  director.goTo(Math.min(director.stage + 1, 3));
+  const stage = director.stage;
+  director.goTo(stage >= 3 ? 0 : stage === 0 ? 2 : Math.min(stage + 1, 3));
   route.hidden = false;
 });
 
@@ -223,7 +224,7 @@ director.setListener((stage, mode) => {
   } else {
     route.hidden = false;
   }
-  enterBtn.textContent = stage === 0 ? '进入教堂' : '继续深入';
+  enterBtn.textContent = stage === 0 ? '进入教堂' : stage >= 3 ? '回到海边' : '继续深入';
 });
 
 routeButtons.forEach((b) => {

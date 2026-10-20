@@ -11,6 +11,13 @@ export interface Stage {
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
+/** zero velocity and acceleration at both ends */
+const smoother = (t: number) => t * t * t * (t * (t * 6 - 15) + 10);
+const smooth01 = (t: number) => {
+  const x = Math.min(1, Math.max(0, t));
+  return x * x * (3 - 2 * x);
+};
+
 export const STAGES: Stage[] = [
   { key: 'beach', name: '海边', pos: V(13.4, 5.15, 21.2), look: V(0, 5.5, 1.0) },
   { key: 'stair', name: '台阶与门廊', pos: V(0, 4.17, 6.4), look: V(0, 5.0, 3.2) },
@@ -43,15 +50,15 @@ export class CameraDirector {
   private camera: THREE.PerspectiveCamera;
   private canvas: HTMLCanvasElement;
   private travel: {
-    points: THREE.Vector3[];
-    lengths: number[];
-    total: number;
+    curve: THREE.CatmullRomCurve3;
     elapsed: number;
     duration: number;
     fromLook: THREE.Vector3;
     toLook: THREE.Vector3;
     toStage: number;
+    look: THREE.Vector3;
   } | null = null;
+  private pending: number | null = null;
   private look = {
     yaw: 0,
     pitch: 0,
@@ -143,46 +150,39 @@ export class CameraDirector {
 
   goTo(index: number, opts: { instant?: boolean } = {}) {
     const to = THREE.MathUtils.clamp(index, 0, STAGES.length - 1);
-    if (this.mode === 'travel' && this.travel?.toStage === to) return;
-    if (to === this.stage && this.mode !== 'travel') {
+    // a click while walking is queued, so the move never snaps to a stop
+    if (this.mode === 'travel') {
+      this.pending = to;
+      return;
+    }
+    if (to === this.stage) {
       this.settle(this.stage);
       return;
     }
     const path = this.pathBetween(this.stage, to);
-    if (path.length === 0) return;
+    if (path.length < 2) return;
     // begin from wherever the camera actually is
     path[0].copy(this.camera.position);
     if (this.stage === 0 && to > 0) {
       path.splice(1, 0, V(this.camera.position.x * 0.55, 5.0, 16.5));
     }
-    if (this.stage === 0 && to === 0) {
-      path.push(this.homePos.clone());
-      path[0].copy(this.camera.position);
-    }
     if (opts.instant) {
       this.finishTravel(to);
       return;
     }
-    const lengths: number[] = [];
-    let total = 0;
-    for (let i = 1; i < path.length; i++) {
-      const d = path[i].distanceTo(path[i - 1]);
-      lengths.push(d);
-      total += d;
-    }
+    const curve = new THREE.CatmullRomCurve3(path, false, 'centripetal', 0.5);
     const fromLook = new THREE.Vector3();
     this.camera.getWorldDirection(fromLook);
-    fromLook.multiplyScalar(4).add(this.camera.position);
+    fromLook.multiplyScalar(6).add(this.camera.position);
     const toLook = STAGES[to].look.clone();
     this.travel = {
-      points: path,
-      lengths,
-      total,
+      curve,
       elapsed: 0,
-      duration: THREE.MathUtils.clamp(total / 4.2, 1.4, 7.2),
+      duration: THREE.MathUtils.clamp(curve.getLength() / 4.4, 1.4, 6.5),
       fromLook,
       toLook,
       toStage: to,
+      look: fromLook.clone(),
     };
     this.mode = 'travel';
     this.controls.enabled = false;
@@ -202,29 +202,24 @@ export class CameraDirector {
     const tr = this.travel;
     tr.elapsed = Math.min(tr.duration, tr.elapsed + dt);
     const raw = tr.duration > 0 ? tr.elapsed / tr.duration : 1;
-    const t = raw < 0.5 ? 2 * raw * raw : 1 - Math.pow(-2 * raw + 2, 2) / 2;
-    const dist = t * tr.total;
-    let acc = 0;
-    let pos = tr.points[tr.points.length - 1];
-    for (let i = 0; i < tr.lengths.length; i++) {
-      if (dist <= acc + tr.lengths[i] || i === tr.lengths.length - 1) {
-        const local = tr.lengths[i] > 0 ? (dist - acc) / tr.lengths[i] : 1;
-        pos = tr.points[i].clone().lerp(tr.points[i + 1], THREE.MathUtils.clamp(local, 0, 1));
-        break;
-      }
-      acc += tr.lengths[i];
-    }
+    const u = smoother(raw);
+    const pos = tr.curve.getPointAt(u);
     this.camera.position.copy(pos);
-    const lookT = THREE.MathUtils.clamp((raw - 0.15) / 0.7, 0, 1);
-    const look = tr.fromLook.clone().lerp(tr.toLook, lookT * lookT * (3 - 2 * lookT));
-    this.camera.lookAt(look);
 
-    // the wooden door swings open as we approach
+    // look along the route first, then settle onto the stage's view
+    const ahead = tr.curve.getPointAt(Math.min(1, u + 0.06));
+    const blend = smooth01((raw - 0.18) / 0.72);
+    const desired = ahead.lerp(tr.toLook, blend);
+    tr.look.lerp(desired, 1 - Math.exp(-dt * 3.2));
+    this.camera.lookAt(tr.look);
+
+    // the wooden door swings open as we approach; the sea glass slides
+    // out of the way only when walking onto the terrace
     const nearDoor = pos.z < 8.6 && pos.z > 3.0;
     this.world.setDoorOpen(nearDoor || tr.toStage >= 2 ? 1 : 0);
+    this.world.setGlassOpen(tr.toStage === 3 || pos.z < -3.6 ? 1 : 0);
 
     if (raw >= 1) {
-      this.travel = null;
       this.finishTravel(tr.toStage);
     }
   }
@@ -233,6 +228,7 @@ export class CameraDirector {
     this.travel = null;
     this.stage = to;
     this.mode = to >= 2 ? 'interior' : 'orbit';
+    this.world.setGlassOpen(to >= 3 ? 1 : 0);
     if (this.mode === 'orbit') {
       const pose = this.poseFor(to);
       this.controls.enabled = true;
@@ -249,6 +245,11 @@ export class CameraDirector {
       this.enterInterior();
     }
     this.onStageChange(this.stage, this.mode);
+    if (this.pending !== null) {
+      const next = this.pending;
+      this.pending = null;
+      if (next !== to) this.goTo(next);
+    }
   }
 
   /** stage 0 is pulled back on tall screens so the whole chapel fits */
@@ -269,6 +270,7 @@ export class CameraDirector {
     this.look.pitch = this.look.basePitch;
     this.camera.position.copy(stage.pos);
     this.camera.rotation.set(this.look.pitch, this.look.yaw, 0, 'YXZ');
+    this.world.setGlassOpen(this.stage >= 3 ? 1 : 0);
   }
 
   /** move one stage forward/back, used by the route buttons */
@@ -285,17 +287,16 @@ export class CameraDirector {
     if (this.stage === 0) {
       const home = this.poseFor(0);
       const path = [this.camera.position.clone(), V(11, 5.6, 25), home.pos.clone()];
-      const tr = {
-        points: path,
-        lengths: [path[1].distanceTo(path[0]), path[2].distanceTo(path[1])],
-        total: path[1].distanceTo(path[0]) + path[2].distanceTo(path[1]),
+      const fromLook = this.camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(6).add(this.camera.position);
+      this.travel = {
+        curve: new THREE.CatmullRomCurve3(path, false, 'centripetal', 0.5),
         elapsed: 0,
         duration: 1.5,
-        fromLook: this.camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(6).add(this.camera.position),
+        fromLook,
         toLook: home.look.clone(),
         toStage: 0,
+        look: fromLook.clone(),
       };
-      this.travel = tr;
       this.mode = 'travel';
       this.controls.enabled = false;
       this.onStageChange(this.stage, this.mode);

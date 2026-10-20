@@ -151,6 +151,24 @@ def join(objs, name):
     return ob
 
 
+def bevel(ob, width=0.018, segments=2):
+    """Small chamfer so the edges catch light instead of looking CG-flat."""
+    deselect()
+    activate(ob)
+    try:
+        m = ob.modifiers.new("bev", 'BEVEL')
+        m.width = width
+        m.segments = segments
+        m.limit_method = 'ANGLE'
+        m.angle_limit = math.radians(38)
+        m.use_clamp_overlap = True
+        bpy.ops.object.modifier_apply(modifier=m.name)
+    except Exception as exc:  # noqa: BLE001
+        print("bevel skipped:", ob.name, exc)
+    finally:
+        ob.select_set(False)
+
+
 # ---------------------------------------------------------------- textures
 def fbm(shape, octaves=5, seed=0, persistence=0.55):
     h, w = shape
@@ -369,8 +387,9 @@ def build():
     cut(gable_sea, box("cutcrossh", (1.90, 2.0, 0.34), (0, GABLE_Y - 0.1, FLOOR + 6.55)))
     parts += [gable_land, gable_sea]
 
-    # glass wall in the sea opening + mullions.  A 1.5 m central opening
-    # (pocket slider, kept open) leads to the ocean-view terrace.
+    # glass wall in the sea opening + mullions.  The central 1.5 m panel is a
+    # pocket slider: it stays closed as glass and slides behind the west pane
+    # when the camera walks out to the terrace (animated in three.js).
     for gx in (-1.70, 1.70):
         parts.append(box("GlassSea", (1.90, 0.06, 3.55), (gx, GABLE_Y - 0.22, FLOOR + 1.78), mat=m_glass))
     for mx in (-1.70, -0.75, 0.75, 1.70):
@@ -378,6 +397,16 @@ def build():
     parts.append(box("Transom", (5.30, 0.09, 0.06), (0, GABLE_Y - 0.16, FLOOR + 2.95), mat=m_steel))
     parts.append(box("TerraceThreshold", (1.56, 0.30, 0.06), (0, GABLE_Y - 0.22, FLOOR + 0.02), mat=m_concrete))
     parts.append(box("SillSea", (5.30, 0.24, 0.10), (0, GABLE_Y - 0.30, FLOOR + 0.05), mat=m_concrete))
+
+    # the central sliding glass panel, origin at its centre so three.js can
+    # translate it sideways into the pocket
+    slider = []
+    slider.append(box("SlidePane", (1.44, 0.055, 3.42), (0, GABLE_Y - 0.24, FLOOR + 1.79), mat=m_glass))
+    slider.append(box("SlideTop", (1.50, 0.10, 0.055), (0, GABLE_Y - 0.24, FLOOR + 3.52), mat=m_steel))
+    slider.append(box("SlideBottom", (1.50, 0.10, 0.09), (0, GABLE_Y - 0.24, FLOOR + 0.07), mat=m_steel))
+    for sx in (-1, 1):
+        slider.append(box("SlideStile", (0.055, 0.10, 3.50), (sx * 0.72, GABLE_Y - 0.24, FLOOR + 1.79), mat=m_steel))
+    parts.append(join(slider, "GlassSlide"))
     # cross window glass
     parts.append(box("GlassCrossV", (0.34, 0.04, 2.70), (0, GABLE_Y - 0.26, FLOOR + 6.35), mat=m_glass))
     parts.append(box("GlassCrossH", (1.90, 0.04, 0.34), (0, GABLE_Y - 0.26, FLOOR + 6.55), mat=m_glass))
@@ -595,6 +624,13 @@ def build():
             parts.append(box("Bollard", (0.09, 0.09, 0.52), (sx, by, 0.26), mat=m_bronze))
             parts.append(box("BollardGlow", (0.07, 0.07, 0.05), (sx, by, 0.53), mat=m_lamp))
     parts.append(box("PorchLight", (0.62, 0.10, 0.08), (0, -GABLE_Y + WALL_T + 0.05, FLOOR + 3.35), mat=m_lamp))
+
+    # ---------------- soften the hard CG edges with a small bevel
+    for ob in list(bpy.data.objects):
+        if ob.type == 'MESH' and ob.name.startswith(('Platform', 'Terrace_Slab', 'SideWall', 'GableLand',
+                                                    'GableSea', 'Roof', 'ScreenWall', 'Stairs', 'Benches',
+                                                    'Altar', 'Column', 'RidgeBeam', 'Door_')):
+            bevel(ob, 0.018, 2)
 
     # ---------------- UVs
     for ob in [o for o in bpy.data.objects if o.type == 'MESH']:
