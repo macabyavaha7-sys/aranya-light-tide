@@ -315,6 +315,9 @@ def build():
                  emission=(1.0, 0.78, 0.52), emission_strength=6.0)
     m_white_emit = pbr("M_Glow", None, 0.5, 0.0, color=(1, 1, 1),
                        emission=(1.0, 0.95, 0.88), emission_strength=2.0)
+    m_drift = pbr("M_Driftwood", None, 0.92, 0.0, color=(0.55, 0.50, 0.43))
+    m_rock = pbr("M_Rock", None, 0.95, 0.0, color=(0.40, 0.39, 0.37))
+    m_post = pbr("M_Post", None, 0.85, 0.0, color=(0.34, 0.29, 0.23))
 
     parts = []
 
@@ -484,14 +487,23 @@ def build():
     parts.append(box("CrossH", (0.95, 0.10, 0.09), (0, GABLE_Y - 0.35, RIDGE + 1.75), mat=m_bronze))
 
     # ---------------- twin stairs with 600 mm centre gap
+    # the flights rise toward the door: bottom step at the beach, top step at
+    # the platform edge, 15 risers of 170 mm, 340 mm going.
     stair_len = STAIR_N * STAIR_RUN
+    stair_top_y = -6.10
+    stair_bot_y = stair_top_y - stair_len
+    steps = []
+    nosings = []
     for sx in (-1, 1):
         x0 = sx * (GAP_HALF + STAIR_HALF / 2)
         for i in range(STAIR_N):
             h = (i + 1) * STAIR_RISE
-            y = -GABLE_Y + 0.25 - (i + 0.5) * STAIR_RUN
-            parts.append(box("Step", (STAIR_HALF, STAIR_RUN, h), (x0, y, h / 2), mat=m_concrete))
-        # (handrails only — the flights stay as slim white steps)
+            y = stair_bot_y + (i + 0.5) * STAIR_RUN
+            steps.append(box("Step", (STAIR_HALF, STAIR_RUN, h), (x0, y, h / 2), mat=m_concrete))
+            nosings.append(box("Nosing", (STAIR_HALF, 0.045, 0.028),
+                               (x0, y - STAIR_RUN / 2 + 0.022, h - 0.014), mat=m_steel))
+    parts.append(join(steps, "Stairs"))
+    parts.append(join(nosings, "StairNosing"))
 
     # ---------------- railings (thin steel)
     rails = []
@@ -508,17 +520,25 @@ def build():
         rot = d.to_track_quat('Z', 'Y').to_euler()
         rails.append(cyl("Railing", r, length, tuple(mid), rot=tuple(rot), verts=8, mat=m_steel))
 
-    # stair rails (outer + along the centre gap), stepped with the flights
+    # stair rails: posts sit on the treads, a continuous handrail follows the
+    # pitch and a lower rail keeps the detail fine at eye level
+    def tread_h(y):
+        i = (y - stair_bot_y) / STAIR_RUN
+        return min(FLOOR, max(0.0, (i + 0.5) * STAIR_RISE))
+
     for sx in (-1, 1):
-        edge_in = sx * (GAP_HALF + 0.04)
-        edge_out = sx * (GAP_HALF + STAIR_HALF - 0.04)
+        edge_in = sx * (GAP_HALF + 0.05)
+        edge_out = sx * (GAP_HALF + STAIR_HALF - 0.05)
         for edge in (edge_in, edge_out):
-            for i in range(0, STAIR_N, 3):
-                h = (i + 1) * STAIR_RISE
-                y = -GABLE_Y + 0.25 - (i + 0.5) * STAIR_RUN
-                post(edge, y, h)
-            rail_run((edge, -GABLE_Y + 0.25, FLOOR + 0.95),
-                     (edge, -GABLE_Y + 0.25 - stair_len, 0.95))
+            y = stair_bot_y + 0.2
+            while y < stair_top_y - 0.1:
+                post(edge, y, tread_h(y), h=0.95, r=0.015)
+                y += 0.95
+            post(edge, stair_top_y - 0.05, FLOOR, h=0.95, r=0.015)
+            rail_run((edge, stair_bot_y + 0.1, tread_h(stair_bot_y + 0.1) + 0.95),
+                     (edge, stair_top_y, FLOOR + 0.95))
+            rail_run((edge, stair_bot_y + 0.1, tread_h(stair_bot_y + 0.1) + 0.48),
+                     (edge, stair_top_y, FLOOR + 0.48), r=0.016)
 
     # terrace railing (three sides)
     ty = GABLE_Y + 3.30
@@ -537,6 +557,37 @@ def build():
     rail_run((-3.58, -4.2, FLOOR + rail_top), (-3.58, 0.8, FLOOR + rail_top))
 
     parts.append(join(rails, "Railings"))
+
+    # ---------------- beach props: driftwood, rocks, mooring posts
+    # modelled in Blender so the GLB carries a little of the shore too
+    drift = []
+    drift.append(cyl("Driftwood", 0.115, 2.7, (-7.6, -14.1, 0.22),
+                     rot=(math.radians(90), 0, math.radians(74)), verts=10, mat=m_drift))
+    drift.append(cyl("DriftwoodBranch", 0.055, 1.05, (-6.5, -13.7, 0.3),
+                     rot=(math.radians(64), 0, math.radians(38)), verts=8, mat=m_drift))
+    drift.append(cyl("DriftwoodBranch2", 0.04, 0.7, (-8.4, -14.6, 0.26),
+                     rot=(math.radians(100), 0, math.radians(-22)), verts=8, mat=m_drift))
+    parts.append(join(drift, "Driftwood"))
+
+    rocks = []
+    for (rx, ry, rr, rz) in [(-13.0, -9.2, 0.55, 0.28), (-11.8, -10.1, 0.32, 0.18),
+                             (15.6, -7.4, 0.7, 0.34), (6.8, -16.8, 0.42, 0.22)]:
+        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=rr, location=(rx, ry, rz * 0.55))
+        rock = bpy.context.object
+        rock.name = "Rock"
+        rock.scale = (1.25, 1.0, 0.55)
+        apply_all(rock)
+        rock.data.materials.append(m_rock)
+        rocks.append(rock)
+    parts.append(join(rocks, "Rocks"))
+
+    posts = []
+    for (px, py) in [(-4.7, -8.4), (4.7, -8.4), (-4.9, -10.9), (4.9, -10.9),
+                     (-5.1, -13.4), (5.1, -13.4)]:
+        posts.append(box("MooringPost", (0.14, 0.14, 1.15), (px, py, 0.55),
+                         rot=(math.radians(2.5), math.radians(1.5), 0), mat=m_post))
+        posts.append(box("MooringCap", (0.18, 0.18, 0.05), (px, py, 1.14), mat=m_post))
+    parts.append(join(posts, "MooringPosts"))
 
     # ---------------- warm exterior lights (emissive only, lights added in three.js)
     for by in (-9.5, -7.0, -4.6):

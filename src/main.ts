@@ -1,4 +1,4 @@
-﻿import './styles.css';
+import './styles.css';
 import { World } from './world';
 import { CameraDirector, STAGES } from './camera';
 import { SeaAudio } from './audio';
@@ -57,10 +57,28 @@ async function boot() {
 let last = performance.now();
 
 function startLoop() {
+  let frames = 0;
+  let frameMs = 0;
+  let degraded = false;
   world.renderer.setAnimationLoop(() => {
     const now = performance.now();
-    const dt = Math.min(0.1, (now - last) / 1000);
+    const raw = now - last;
+    const dt = Math.min(0.1, raw / 1000);
     last = now;
+    // if the GPU is visibly struggling, drop resolution once
+    if (!degraded && raw < 500) {
+      frames++;
+      frameMs += raw;
+      if (frames >= 100) {
+        const avg = frameMs / frames;
+        if (avg > 31) {
+          world.degrade();
+          degraded = true;
+        }
+        frames = 0;
+        frameMs = 0;
+      }
+    }
     stepTween(dt);
     director.update(dt);
     world.update(dt);

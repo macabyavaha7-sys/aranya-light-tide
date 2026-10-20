@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Render quick previews of the chapel .blend for visual checks.
    blender -b blender/aranya-chapel.blend -P blender/render_preview.py
 """
@@ -35,9 +35,9 @@ if world and world.use_nodes:
     world.node_tree.nodes["Background"].inputs[1].default_value = 1.1
 
 shots = [
-    ("01_approach", (-13.5, -21.0, 7.0), (0.6, 0.0, 5.6), 52),
-    ("02_east_sea", (2.5, 18.0, 8.4), (0.0, 2.0, 6.0), 55),
-    ("03_interior", (0.0, -2.2, 4.25), (0.0, 5.0, 5.3), 24),
+    ("01_approach", (-17.0, -28.0, 10.5), (0.0, 0.0, 5.2), 42),
+    ("02_east_sea", (6.0, 20.0, 9.0), (0.0, 2.0, 5.8), 45),
+    ("03_interior", (0.0, -3.0, 4.25), (0.0, 5.4, 5.2), 20),
     ("04_undercroft", (7.0, -12.0, 2.2), (0.0, -1.0, 3.6), 45),
 ]
 

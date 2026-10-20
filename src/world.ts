@@ -309,7 +309,7 @@ const OCEAN_VERT = /* glsl */ `
 
     float hx = waveH(wp.xz + vec2(e, 0.0), uTime);
     float hz = waveH(wp.xz + vec2(0.0, e), uTime);
-    vNormalW = normalize(vec3((h - hx) * 2.2, e, (h - hz) * 2.2));
+    vNormalW = normalize(vec3((h - hx) * 1.25, e, (h - hz) * 1.25));
 
     vWorldPos = wp.xyz;
     gl_Position = projectionMatrix * viewMatrix * wp;
@@ -324,6 +324,7 @@ const OCEAN_FRAG = /* glsl */ `
   uniform vec3 uSunColor;
   uniform vec3 uZenith;
   uniform vec3 uHorizon;
+  uniform vec3 uSeaSky;
   uniform vec3 uDeep;
   uniform vec3 uShallow;
   uniform vec3 uFoam;
@@ -341,16 +342,17 @@ const OCEAN_FRAG = /* glsl */ `
     float d1 = fbm(vWorldPos.xz * 0.42 + vec2(uTime * 0.05, -uTime * 0.035));
     float d2 = fbm(vWorldPos.xz * 1.7 - vec2(uTime * 0.10, uTime * 0.06));
     float d3 = fbm(vWorldPos.xz * 0.11 + vec2(-uTime * 0.02, uTime * 0.015));
-    N = normalize(N + vec3((d1 - 0.5) * 0.34, 0.0, (d2 - 0.5) * 0.24 + (d3 - 0.5) * 0.22));
+    float d4 = fbm(vWorldPos.xz * 5.5 + vec2(uTime * 0.16, uTime * 0.11));
+    N = normalize(N + vec3((d1 - 0.5) * 0.42, 0.0, (d2 - 0.5) * 0.34 + (d3 - 0.5) * 0.26 + (d4 - 0.5) * 0.14));
 
     float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0);
     vec3 R = reflect(-V, N);
-    vec3 skyRef = mix(uHorizon, uZenith, smoothstep(0.0, 0.45, R.y));
+    vec3 skyRef = mix(uSeaSky, uZenith, smoothstep(0.0, 0.45, R.y));
     float sunFacing = pow(max(dot(normalize(vec3(R.x, 0.0, R.z)), normalize(vec3(uSunDir.x, 0.0, uSunDir.z))), 0.0), 8.0);
     skyRef += uSunColor * sunFacing * 0.05 * clamp(uSunI, 0.0, 1.0);
     float depthMix = smoothstep(-260.0, -26.0, vWorldPos.z);
     vec3 col = mix(uDeep, uShallow, depthMix * 0.7 + 0.08);
-    col = mix(col, skyRef, clamp(fres * 0.55 + 0.08, 0.0, 0.62));
+    col = mix(col, skyRef, clamp(fres * 0.40 + 0.05, 0.0, 0.42));
 
     // low sun path
     vec3 H = normalize(uSunDir + V);
@@ -368,9 +370,13 @@ const OCEAN_FRAG = /* glsl */ `
     float wob = fbm(vWorldPos.xz * 0.16 + vec2(uTime * 0.03, 0.0)) * 2.6;
     float ripple = sin(dshore * 1.05 + uTime * 1.15 + wob);
     float foamRibbon = smoothstep(0.42, 0.86, ripple) * (1.0 - smoothstep(0.0, 17.0, dshore));
-    float foamEdge = (1.0 - smoothstep(0.0, 4.2, dshore)) * smoothstep(0.28, 0.72, fbm(vWorldPos.xz * 1.1 + uTime * 0.18));
+    float foamEdge = (1.0 - smoothstep(0.0, 4.2, dshore)) * smoothstep(0.42, 0.78, fbm(vWorldPos.xz * 1.1 + uTime * 0.18));
     float crest = smoothstep(0.13, 0.24, vWorldPos.y) * (1.0 - smoothstep(0.0, 30.0, dshore)) * 0.28;
-    float foam = clamp(foamRibbon * 0.55 + foamEdge * 1.1 + crest, 0.0, 1.0);
+    // a set of foam lines that travel shoreward and dissolve as they arrive
+    float surge = fract(uTime * 0.052 + fbm(vWorldPos.xz * 0.028 + uTime * 0.01) * 0.3);
+    float surgePos = 19.0 * (1.0 - surge);
+    float surgeFoam = smoothstep(2.8, 0.0, abs(dshore - surgePos)) * (1.0 - surge * 0.5);
+    float foam = clamp(foamRibbon * 0.34 + foamEdge * 0.62 + crest + surgeFoam * 0.45, 0.0, 1.0);
     col = mix(col, uFoam, foam * 0.95);
 
     // distance haze, ending exactly on the sky's horizon colour
@@ -624,6 +630,7 @@ export class World {
       uSunColor: { value: this.state.sunColor.clone() },
       uZenith: { value: this.state.zenith.clone() },
       uHorizon: { value: this.state.horizon.clone() },
+      uSeaSky: { value: this.state.horizon.clone().lerp(new THREE.Color(0x8ea6ba), 0.45) },
       uDeep: { value: this.state.deep.clone() },
       uShallow: { value: this.state.shallow.clone() },
       uFoam: { value: this.state.foam.clone() },
@@ -912,6 +919,10 @@ export class World {
       mat.envMapIntensity = 0.40;
       mat.color.setScalar(name.includes('Teak') ? 1.5 : 1.95);
     }
+    if (name.includes('Driftwood') || name.includes('Rock') || name.includes('Post')) {
+      mat.roughness = 0.95;
+      mat.envMapIntensity = 0.25;
+    }
     if (name.includes('Steel') || name.includes('Bronze') || name.includes('Brass')) {
       mat.envMapIntensity = 0.9;
     }
@@ -952,6 +963,7 @@ export class World {
     this.oceanUniforms.uSunColor.value.copy(s.sunColor);
     this.oceanUniforms.uZenith.value.copy(s.zenith);
     this.oceanUniforms.uHorizon.value.copy(s.horizon);
+    this.oceanUniforms.uSeaSky.value.copy(s.horizon).lerp(new THREE.Color(0x8ea6ba), 0.5);
     this.oceanUniforms.uDeep.value.copy(s.deep);
     this.oceanUniforms.uShallow.value.copy(s.shallow);
     this.oceanUniforms.uFoam.value.copy(s.foam);
@@ -1076,6 +1088,17 @@ export class World {
 
   render() {
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /** drop quality once if the GPU is struggling */
+  degrade() {
+    this.renderer.setPixelRatio(Math.min(this.renderer.getPixelRatio(), 1.25));
+    if (this.sun.shadow.mapSize.x > 1024) {
+      this.sun.shadow.mapSize.set(1024, 1024);
+      this.sun.shadow.map?.dispose();
+      this.sun.shadow.map = null;
+    }
+    this.resize();
   }
 
   resize() {

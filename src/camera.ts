@@ -14,7 +14,7 @@ const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 export const STAGES: Stage[] = [
   { key: 'beach', name: '海边', pos: V(13.4, 5.15, 21.2), look: V(0, 5.5, 1.0) },
   { key: 'stair', name: '台阶与门廊', pos: V(0, 4.17, 6.4), look: V(0, 5.0, 3.2) },
-  { key: 'hall', name: '礼堂', pos: V(0, 4.17, 3.1), look: V(0, 4.9, -7.0) },
+  { key: 'hall', name: '礼堂', pos: V(0, 4.17, 3.1), look: V(0, 5.7, -7.0) },
   { key: 'terrace', name: '观海露台', pos: V(0, 4.12, -6.55), look: V(0, 3.4, -26) },
 ];
 
