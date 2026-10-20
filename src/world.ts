@@ -542,8 +542,12 @@ export class World {
   private slotGlow: THREE.MeshBasicMaterial | null = null;
   private interiorLights: THREE.PointLight[] = [];
   private exteriorLights: THREE.PointLight[] = [];
-  private envCanvas: HTMLCanvasElement;
-  private envTex: THREE.Texture | null = null;
+  private envScene = new THREE.Scene();
+  private envSky: THREE.Mesh | null = null;
+  private cubeRT!: THREE.WebGLCubeRenderTarget;
+  private cubeCam!: THREE.CubeCamera;
+  private pmrem!: THREE.PMREMGenerator;
+  private envMapRT: THREE.WebGLRenderTarget | null = null;
   private envDirty = true;
   private envTimer = 0;
   private doorOpen = 0;
@@ -652,9 +656,16 @@ export class World {
 
     this.buildSand();
     this.buildDunes();
-    this.envCanvas = document.createElement('canvas');
-    this.envCanvas.width = 256;
-    this.envCanvas.height = 128;
+
+    // capture the actual sky shader into a cube map and pre-filter it: real
+    // image-based lighting instead of a flat gradient
+    this.envSky = new THREE.Mesh(this.sky.geometry, this.sky.material);
+    this.envSky.frustumCulled = false;
+    this.envScene.add(this.envSky);
+    const cubeSize = this.mobile ? 128 : 256;
+    this.cubeRT = new THREE.WebGLCubeRenderTarget(cubeSize, { type: THREE.HalfFloatType });
+    this.cubeCam = new THREE.CubeCamera(0.1, 2000, this.cubeRT);
+    this.pmrem = new THREE.PMREMGenerator(this.renderer);
     this.updateEnv();
 
     this.applyState();
@@ -895,25 +906,26 @@ export class World {
     if (!mat) return mat;
     const name = mat.name || '';
     if (name.includes('Glass')) {
+      // clear glass reads better than transmission here: the sea must stay
+      // legible, while the sky cubemap supplies reflections
       return new THREE.MeshStandardMaterial({
-        color: 0xbfd3d6,
-        roughness: 0.06,
-        metalness: 0.02,
+        color: 0xd6e4e6,
+        roughness: 0.055,
+        metalness: 0.06,
         transparent: true,
-        opacity: 0.18,
-        envMapIntensity: 1.35,
+        opacity: 0.16,
+        envMapIntensity: 1.7,
         side: THREE.DoubleSide,
         depthWrite: false,
       });
-    }
-    if (name.includes('Lamp') || name.includes('Glow')) {
+    }    if (name.includes('Lamp') || name.includes('Glow')) {
       mat.emissive = new THREE.Color(0xffc286);
       mat.emissiveIntensity = 2.4;
       mat.roughness = 0.5;
       if (!this.lampMaterials.includes(mat)) this.lampMaterials.push(mat);
       return mat;
     }
-    mat.envMapIntensity = 0.55;
+    mat.envMapIntensity = 0.8;
     if (name.includes('Stucco') || name.includes('Concrete')) {
       mat.roughness = Math.min(1, (mat.roughness ?? 0.9) * 0.98);
       mat.normalScale?.set(1.35, 1.35);
@@ -1051,45 +1063,12 @@ export class World {
   }
 
   private updateEnv() {
-    const s = this.state;
-    const c = this.envCanvas;
-    const ctx = c.getContext('2d')!;
-    const w = c.width;
-    const h = c.height;
-    const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, '#' + s.zenith.getHexString());
-    grad.addColorStop(0.5, '#' + s.horizon.getHexString());
-    grad.addColorStop(0.54, '#' + s.fog.getHexString());
-    grad.addColorStop(1, '#' + s.ground.getHexString());
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, w, h);
-
-    // sun / moon blob, roughly positioned by azimuth
-    const az = Math.atan2(s.sunDir.x, -s.sunDir.z);
-    const u = ((az / (Math.PI * 2)) % 1 + 1) % 1;
-    const el = Math.asin(THREE.MathUtils.clamp(s.sunDir.y, -1, 1));
-    const v = 0.5 - el / Math.PI;
-    const x = u * w;
-    const y = v * h;
-    const r = 26;
-    const g2 = ctx.createRadialGradient(x, y, 1, x, y, r);
-    const col = '#' + (s.night > 0.5 ? new THREE.Color(0xdfe8f5) : s.sunColor).getHexString();
-    g2.addColorStop(0, col);
-    g2.addColorStop(0.12, col);
-    g2.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.globalAlpha = s.night > 0.5 ? 0.55 : 0.85;
-    ctx.fillStyle = g2;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-
-    if (this.envTex) this.envTex.dispose();
-    const tex = new THREE.CanvasTexture(c);
-    tex.mapping = THREE.EquirectangularReflectionMapping;
-    tex.colorSpace = THREE.SRGBColorSpace;
-    this.envTex = tex;
-    this.scene.environment = tex;
+    this.cubeCam.update(this.renderer, this.envScene);
+    const rt = this.pmrem.fromCubemap(this.cubeRT.texture);
+    if (this.envMapRT) this.envMapRT.dispose();
+    this.envMapRT = rt;
+    this.scene.environment = rt.texture;
+    this.scene.environmentIntensity = 0.9;
     this.envDirty = false;
   }
 
@@ -1127,7 +1106,7 @@ export class World {
 
     if (this.envDirty) {
       this.envTimer += dt;
-      if (this.envTimer > 0.28) {
+      if (this.envTimer > (this.mobile ? 0.9 : 0.45)) {
         this.envTimer = 0;
         this.updateEnv();
       }
